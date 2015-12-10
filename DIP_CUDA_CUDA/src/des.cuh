@@ -29,7 +29,7 @@ extern "C" unsigned char sBox(int table[], unsigned char x);
 
 // CUDA equivalent functions
 __device__ unsigned int F_cu(unsigned int c, long long int key);
-__global__ void DES_cu(long long int *MD, long long int *keys);
+__global__ void DES_cu(long long int *MD, long long int *keys, unsigned int num_bytes);
 __device__ unsigned char sBox_cu(uint32_t table[], unsigned char x);
 extern "C" void run_cu(FILE* inFile, FILE* outFile, FILE* keyFile, mode mode);
 extern "C" void encryption_cu(char *in, char *out, char *key);

@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <math.h>
+
+#define THREADS_PER_BLOCK 1024
 
 __device__ uint32_t IP_cu[] = {58, 50, 42, 34, 26, 18, 10, 2,
 		60, 52, 44, 36, 28, 20, 12, 4,
@@ -181,10 +184,16 @@ __device__ unsigned int F_cu(unsigned int c, long long int key) {
 	return result;
 }
 
-__global__ void DES_cu(long long int* results, long long int *MD, long long int *keys) {
+__global__ void DES_cu(long long int* results, long long int *MD, long long int *keys, unsigned int num_bytes) {
+	// Find global thread ID
+	int t_id = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (t_id >= num_bytes)
+		return;
+
 	// Initial permutation
 	long long int permutated = 0;
-	PERMUTATE(permutated, MD[threadIdx.x], IP_cu, 64);
+	PERMUTATE(permutated, MD[t_id], IP_cu, 64);
 
 	// XOR iteration
 	int i;
@@ -205,7 +214,7 @@ __global__ void DES_cu(long long int* results, long long int *MD, long long int 
 	// Inverse permutation
 	long long int result = 0;
 	PERMUTATE(result, swapped, IP_inv_cu, 64);
-	results[threadIdx.x] = result;
+	results[t_id] = result;
 }
 
 __device__ unsigned char sBox_cu(uint32_t table[], unsigned char x) {
@@ -281,9 +290,20 @@ extern "C" void run_cu(FILE* inFile, FILE* outFile, FILE* keyFile, mode mode) {
         exit(EXIT_FAILURE);
     }
 
-	dim3 dimBlock(numChars, 1);
-	dim3 dimGrid(1, 1);
-	DES_cu<<<dimGrid, dimBlock>>>(results_cu, inputStream_cu, subkeys_cu);
+    int threadsPerBlock;
+    int gridSize;
+
+    if (numChars > THREADS_PER_BLOCK)
+    {
+    	threadsPerBlock = THREADS_PER_BLOCK;
+    	gridSize = (int)ceil((float)numChars / THREADS_PER_BLOCK);
+    }
+    else {
+    	threadsPerBlock = numChars;
+    	gridSize = 1;
+    }
+
+	DES_cu<<<gridSize, threadsPerBlock>>>(results_cu, inputStream_cu, subkeys_cu, numChars);
 
 	long long int* results = (long long int*) malloc(mallocSize);
 	cuda_err = cudaMemcpy(results, results_cu, mallocSize, cudaMemcpyDeviceToHost);
